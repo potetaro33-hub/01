@@ -3,16 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香陵祭 独立型POSレジ</title>
+    <title>香陵祭 統合型POSレジ</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #000080; --accent: #ef4444; --bg: #f0f2f5; --text: #1e293b; }
         body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .cashier-container { width: 100%; max-width: 500px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 25px; }
-        header { text-align: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        .cashier-container { width: 100%; max-width: 500px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 25px; min-height: 400px; }
+        header { text-align: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; position: relative; }
         h1 { color: var(--primary); font-size: 1.5rem; margin: 0; }
-        .shop-badge { display: inline-block; background: var(--primary); color: white; padding: 4px 12px; border-radius: 50px; font-size: 0.8rem; margin-top: 8px; }
-        #product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        
+        /* 画面切り替え用 */
+        .view { display: none; }
+        .view.active { display: block; }
+
+        /* 店舗選択画面のスタイル */
+        .select-group { margin-top: 30px; }
+        select { width: 100%; padding: 15px; font-size: 1.1em; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; }
+        
+        /* レジ画面のスタイル */
+        #product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .product-card { border: 1px solid #e2e8f0; border-radius: 15px; overflow: hidden; cursor: pointer; background: white; transition: 0.1s; }
         .product-card:active { transform: scale(0.96); }
         .product-card.sold-out { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
@@ -20,9 +29,13 @@
         .product-info { padding: 10px; text-align: center; }
         .p-name { font-weight: bold; font-size: 0.95rem; }
         .p-price { color: var(--accent); font-weight: 900; font-size: 1.1rem; }
-        .p-stock { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
-        .btn-action { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .btn-refresh { background: #e2e8f0; color: var(--text); }
+        .p-stock { font-size: 0.75rem; color: #64748b; }
+
+        .btn-action { width: 100%; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 1em; }
+        .btn-blue { background: var(--primary); color: white; }
+        .btn-gray { background: #e2e8f0; color: var(--text); }
+        .btn-back { position: absolute; left: 0; top: 0; background: none; border: none; color: var(--primary); cursor: pointer; font-size: 1.2em; }
+
         .loading { text-align: center; padding: 40px; font-weight: bold; color: var(--primary); }
     </style>
 </head>
@@ -30,80 +43,95 @@
 
 <div class="cashier-container">
     <header>
-        <h1>香陵祭 POSレジ</h1>
-        <div id="shop-id-display" class="shop-badge">準備中...</div>
+        <button id="back-to-select" class="btn-back" style="display:none;" onclick="showSelectionView()">←</button>
+        <h1 id="header-title">レジログイン</h1>
     </header>
 
-    <div id="loader" class="loading">データを通信中...</div>
-    <div id="product-grid" style="display:none;"></div>
+    <div id="selection-view" class="view active">
+        <p style="text-align:center;">担当するクラスを選択してください</p>
+        <div class="select-group">
+            <select id="shop-selector">
+                <option value="">-- クラスを選択 --</option>
+                <option value="1oif7zFMK_sDvQFT5Ql_TIisT1ntkx4hPS2_NqPdGc_M">2年1組 (焼きそば)</option>
+                </select>
+            <button class="btn-action btn-blue" onclick="startCashier()">レジを開始する</button>
+        </div>
+    </div>
 
-    <button class="btn-action btn-refresh" onclick="fetchData()">最新の情報に更新</button>
+    <div id="register-view" class="view">
+        <div id="loader" class="loading">データを取得中...</div>
+        <div id="product-grid"></div>
+        <button class="btn-action btn-gray" style="margin-top:20px;" onclick="loadInventory()">情報を更新</button>
+    </div>
 </div>
 
 <script>
-    // ----------------------------------------------------------------
-    // 設定: GASで「ウェブアプリとしてデプロイ」した際のURLをここに貼る
-    // ----------------------------------------------------------------
     const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbw5phSTwNgvLf5jWJwBK-dETAjvV_hJRwjOVY8ycyr2lsmeXSgQY_fwsgrv3V58EbhUBw/exec'; 
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const SHEET_ID = urlParams.get('id') || '1oif7zFMK_sDvQFT5Ql_TIisT1ntkx4hPS2_NqPdGc_M';
+    let currentSSID = '';
 
-    async function fetchData() {
-        toggleLoading(true);
+    // 画面切り替え: 店舗選択へ
+    function showSelectionView() {
+        document.getElementById('selection-view').classList.add('active');
+        document.getElementById('register-view').classList.remove('active');
+        document.getElementById('back-to-select').style.display = 'none';
+        document.getElementById('header-title').innerText = 'レジログイン';
+    }
+
+    // 画面切り替え: レジ開始
+    function startCashier() {
+        const selector = document.getElementById('shop-selector');
+        currentSSID = selector.value;
+        if (!currentSSID) return alert("クラスを選択してください");
+
+        const shopName = selector.options[selector.selectedIndex].text;
+        document.getElementById('header-title').innerText = shopName;
+        document.getElementById('selection-view').classList.remove('active');
+        document.getElementById('register-view').classList.add('active');
+        document.getElementById('back-to-select').style.display = 'block';
+        
+        loadInventory();
+    }
+
+    // 在庫取得 (API呼び出し)
+    async function loadInventory() {
+        toggleLoader(true);
         try {
-            // GETリクエストで在庫情報を取得
-            const response = await fetch(`${GAS_API_URL}?action=getInventory&id=${SHEET_ID}`);
-            const items = await response.json();
+            const res = await fetch(`${GAS_API_URL}?action=getInventory&id=${currentSSID}`);
+            const items = await res.json();
             renderProducts(items);
-        } catch (e) {
-            alert("データ取得に失敗しました。GASの公開設定を確認してください。");
-        } finally {
-            toggleLoading(false);
-        }
+        } catch (e) { alert("通信エラーが発生しました"); }
+        finally { toggleLoader(false); }
     }
 
     function renderProducts(items) {
         const grid = document.getElementById('product-grid');
-        grid.innerHTML = '';
-        items.forEach(item => {
-            const card = document.createElement('div');
-            card.className = `product-card ${item.stock <= 0 ? 'sold-out' : ''}`;
-            card.onclick = () => processSale(item);
-            card.innerHTML = `
+        grid.innerHTML = items.map(item => `
+            <div class="product-card ${item.stock <= 0 ? 'sold-out' : ''}" onclick="processSale(${JSON.stringify(item).replace(/"/g, '&quot;')})">
                 <img src="${item.image || ''}" class="product-img">
                 <div class="product-info">
                     <div class="p-name">${item.name}</div>
-                    <div class="p-price">¥${item.price.toLocaleString()}</div>
-                    <div class="p-stock">在庫: ${item.stock}</div>
-                </div>`;
-            grid.appendChild(card);
-        });
-        document.getElementById('shop-id-display').innerText = `ID: ${SHEET_ID.substring(0,8)}...`;
+                    <div class="p-price">¥${item.price}</div>
+                    <div class="p-stock">残り: ${item.stock}</div>
+                </div>
+            </div>
+        `).join('');
     }
 
     async function processSale(item) {
-        if (!confirm(`【会計確認】\n${item.name}\n在庫を1減らしますか？`)) return;
-
-        toggleLoading(true);
+        if (!confirm(`${item.name} の会計を確定しますか？`)) return;
+        toggleLoader(true);
         try {
-            // GETリクエストで在庫を減らす指示を出す (CORS回避のためGETを使用)
-            const response = await fetch(`${GAS_API_URL}?action=recordSale&id=${SHEET_ID}&row=${item.rowIndex}&name=${encodeURIComponent(item.name)}`);
-            const result = await response.json();
+            const res = await fetch(`${GAS_API_URL}?action=recordSale&id=${currentSSID}&row=${item.rowIndex}&name=${encodeURIComponent(item.name)}`);
+            const result = await res.json();
             alert(result.message);
-            fetchData(); // 完了後に再読み込み
-        } catch (e) {
-            alert("会計処理に失敗しました。");
-            toggleLoading(false);
-        }
+            loadInventory();
+        } catch (e) { alert("会計に失敗しました"); toggleLoader(false); }
     }
 
-    function toggleLoading(isLoading) {
-        document.getElementById('loader').style.display = isLoading ? 'block' : 'none';
-        document.getElementById('product-grid').style.display = isLoading ? 'none' : 'grid';
+    function toggleLoader(show) {
+        document.getElementById('loader').style.display = show ? 'block' : 'none';
+        document.getElementById('product-grid').style.opacity = show ? '0.3' : '1';
     }
-
-    window.onload = fetchData;
 </script>
 </body>
 </html>
