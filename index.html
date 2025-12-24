@@ -13,12 +13,12 @@
             background: var(--bg); 
             color: var(--text); 
             margin: 0; 
-            padding-top: 80px; /* ヘッダーの分だけ下げる */
+            padding-top: 80px; 
             display: flex; 
             justify-content: center; 
         }
 
-        /* ===== ナビと共通の固定ヘッダー ===== */
+        /* ===== 固定ヘッダー ===== */
         #fixed-header {
             position: fixed;
             top: 0;
@@ -36,13 +36,23 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
 
+        /* スマホ専用の2段構成修正 */
+        @media (max-width: 600px) {
+            body { padding-top: 100px; }
+            #fixed-header {
+                height: 90px;
+                flex-direction: column;
+                justify-content: center;
+                gap: 5px;
+            }
+        }
+
         .header-title {
             font-weight: 900;
             font-size: 1.2em;
             letter-spacing: 0.1em;
         }
 
-        /* ===== 更新中のくるくる (Header内右側) ===== */
         .header-right {
             position: absolute;
             right: 15px;
@@ -57,7 +67,7 @@
             border-top: 3px solid #fff;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            display: none; /* 初期状態は非表示 */
+            display: none;
         }
 
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -234,7 +244,7 @@
 
     function showSync(show) {
         const spinner = document.getElementById('sync-spinner');
-        spinner.style.display = show ? 'block' : 'none';
+        if(spinner) spinner.style.display = show ? 'block' : 'none';
     }
 
     init();
