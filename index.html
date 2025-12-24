@@ -8,34 +8,25 @@
     <style>
         :root { --primary: #000080; --accent: #ef4444; --bg: #f0f2f5; --text: #1e293b; }
         body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .cashier-container { width: 100%; max-width: 500px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 25px; min-height: 400px; }
+        .cashier-container { width: 100%; max-width: 500px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 25px; min-height: 450px; }
         header { text-align: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; position: relative; }
         h1 { color: var(--primary); font-size: 1.5rem; margin: 0; }
-        
-        /* 画面切り替え用 */
         .view { display: none; }
         .view.active { display: block; }
-
-        /* 店舗選択画面のスタイル */
-        .select-group { margin-top: 30px; }
-        select { width: 100%; padding: 15px; font-size: 1.1em; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; }
-        
-        /* レジ画面のスタイル */
+        select { width: 100%; padding: 15px; font-size: 1.1em; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; background: #fff; }
         #product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .product-card { border: 1px solid #e2e8f0; border-radius: 15px; overflow: hidden; cursor: pointer; background: white; transition: 0.1s; }
         .product-card:active { transform: scale(0.96); }
-        .product-card.sold-out { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
+        .product-card.sold-out { opacity: 0.4; filter: grayscale(1); pointer-events: none; }
         .product-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #f8fafc; }
-        .product-info { padding: 10px; text-align: center; }
-        .p-name { font-weight: bold; font-size: 0.95rem; }
+        .product-info { padding: 12px; text-align: center; }
+        .p-name { font-weight: bold; font-size: 0.95rem; margin-bottom: 4px; }
         .p-price { color: var(--accent); font-weight: 900; font-size: 1.1rem; }
-        .p-stock { font-size: 0.75rem; color: #64748b; }
-
+        .p-stock { font-size: 0.8em; color: #64748b; margin-top: 4px; }
         .btn-action { width: 100%; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 1em; }
         .btn-blue { background: var(--primary); color: white; }
         .btn-gray { background: #e2e8f0; color: var(--text); }
-        .btn-back { position: absolute; left: 0; top: 0; background: none; border: none; color: var(--primary); cursor: pointer; font-size: 1.2em; }
-
+        .btn-back { position: absolute; left: 0; top: 0; background: none; border: none; color: var(--primary); cursor: pointer; font-size: 1.2em; padding: 10px; }
         .loading { text-align: center; padding: 40px; font-weight: bold; color: var(--primary); }
     </style>
 </head>
@@ -48,28 +39,42 @@
     </header>
 
     <div id="selection-view" class="view active">
-        <p style="text-align:center;">担当するクラスを選択してください</p>
-        <div class="select-group">
-            <select id="shop-selector">
-                <option value="">-- クラスを選択 --</option>
-                <option value="1oif7zFMK_sDvQFT5Ql_TIisT1ntkx4hPS2_NqPdGc_M">2年1組 (焼きそば)</option>
-                </select>
-            <button class="btn-action btn-blue" onclick="startCashier()">レジを開始する</button>
-        </div>
+        <p style="text-align:center; color:#64748b;">担当する店舗（クラス）を選んでください</p>
+        <select id="shop-selector">
+            <option value="">リストを取得中...</option>
+        </select>
+        <button id="start-btn" class="btn-action btn-blue" onclick="startCashier()" disabled>レジを開始する</button>
     </div>
 
     <div id="register-view" class="view">
-        <div id="loader" class="loading">データを取得中...</div>
+        <div id="loader" class="loading">通信中...</div>
         <div id="product-grid"></div>
-        <button class="btn-action btn-gray" style="margin-top:20px;" onclick="loadInventory()">情報を更新</button>
+        <button class="btn-action btn-gray" style="margin-top:20px;" onclick="loadInventory()">在庫を更新</button>
     </div>
 </div>
 
 <script>
-    const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwMQxYShsVsnf8VEhBN6cbhht-C-_C31JEPZEp9x_XqQSIEz6fRdH7tKSfdOk3WAzgtaQ/exec'; 
-    let currentSSID = '1oif7zFMK_sDvQFT5Ql_TIisT1ntkx4hPS2_NqPdGc_M';
+    const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwMQxYShsVsnf8VEhBN6cbhht-C-_C31JEPZEp9x_XqQSIEz6fRdH7tKSfdOk3WAzgtaQ/exec'; // ←ここにデプロイ後のURLを貼る
+    let currentSheetName = '';
 
-    // 画面切り替え: 店舗選択へ
+    async function init() {
+        try {
+            const res = await fetch(`${GAS_API_URL}?action=getShops`);
+            const shops = await res.json();
+            const selector = document.getElementById('shop-selector');
+            selector.innerHTML = '<option value="">-- 店舗を選択 --</option>';
+            shops.forEach(shop => {
+                const opt = document.createElement('option');
+                opt.value = shop.sheetName; // シート名を入れる
+                opt.textContent = shop.name;
+                selector.appendChild(opt);
+            });
+            document.getElementById('start-btn').disabled = false;
+        } catch (e) {
+            alert("店舗リストの読み込みに失敗しました。GASのURLと共有設定を確認してください。");
+        }
+    }
+
     function showSelectionView() {
         document.getElementById('selection-view').classList.add('active');
         document.getElementById('register-view').classList.remove('active');
@@ -77,29 +82,25 @@
         document.getElementById('header-title').innerText = 'レジログイン';
     }
 
-    // 画面切り替え: レジ開始
-    function startCashier() {
+    async function startCashier() {
         const selector = document.getElementById('shop-selector');
-        currentSSID = selector.value;
-        if (!currentSSID) return alert("クラスを選択してください");
+        currentSheetName = selector.value;
+        if (!currentSheetName) return alert("店舗を選択してください");
 
-        const shopName = selector.options[selector.selectedIndex].text;
-        document.getElementById('header-title').innerText = shopName;
+        document.getElementById('header-title').innerText = selector.options[selector.selectedIndex].text;
         document.getElementById('selection-view').classList.remove('active');
         document.getElementById('register-view').classList.add('active');
         document.getElementById('back-to-select').style.display = 'block';
-        
         loadInventory();
     }
 
-    // 在庫取得 (API呼び出し)
     async function loadInventory() {
         toggleLoader(true);
         try {
-            const res = await fetch(`${GAS_API_URL}?action=getInventory&id=${currentSSID}`);
+            const res = await fetch(`${GAS_API_URL}?action=getInventory&sheetName=${encodeURIComponent(currentSheetName)}`);
             const items = await res.json();
             renderProducts(items);
-        } catch (e) { alert("通信エラーが発生しました"); }
+        } catch (e) { alert("データ取得エラー"); }
         finally { toggleLoader(false); }
     }
 
@@ -111,27 +112,28 @@
                 <div class="product-info">
                     <div class="p-name">${item.name}</div>
                     <div class="p-price">¥${item.price}</div>
-                    <div class="p-stock">残り: ${item.stock}</div>
+                    <div class="p-stock">在庫: ${item.stock}</div>
                 </div>
             </div>
         `).join('');
     }
 
     async function processSale(item) {
-        if (!confirm(`${item.name} の会計を確定しますか？`)) return;
+        if (!confirm(`${item.name} を会計しますか？`)) return;
         toggleLoader(true);
         try {
-            const res = await fetch(`${GAS_API_URL}?action=recordSale&id=${currentSSID}&row=${item.rowIndex}&name=${encodeURIComponent(item.name)}`);
+            const res = await fetch(`${GAS_API_URL}?action=recordSale&sheetName=${encodeURIComponent(currentSheetName)}&row=${item.rowIndex}&name=${encodeURIComponent(item.name)}`);
             const result = await res.json();
-            alert(result.message);
             loadInventory();
-        } catch (e) { alert("会計に失敗しました"); toggleLoader(false); }
+        } catch (e) { alert("通信エラー"); toggleLoader(false); }
     }
 
     function toggleLoader(show) {
         document.getElementById('loader').style.display = show ? 'block' : 'none';
         document.getElementById('product-grid').style.opacity = show ? '0.3' : '1';
     }
+
+    init();
 </script>
 </body>
 </html>
