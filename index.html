@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; padding: 20px; }
+        .cashier-card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        h1 { color: #000080; }
+        .btn { display: block; width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 10px; font-size: 1.2em; font-weight: bold; cursor: pointer; color: white; }
+        .blue { background: #000080; }
+        .red { background: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="cashier-card">
+        <h1>香陵祭 POSレジ</h1>
+        <p>※ここは別タブで開いた専用ページです</p>
+        <button class="btn blue" onclick="sell('焼きそば', 400)">焼きそば (400円)</button>
+        <button class="btn blue" onclick="sell('ラムネ', 150)">ラムネ (150円)</button>
+        <hr>
+        <button class="btn red" onclick="window.close()">レジを終了する</button>
+    </div>
+    <script>
+        function sell(item, price) {
+            google.script.run.withSuccessHandler(res => alert(res)).recordSale(item, price);
+        }
+    </script>
+</body>
+</html>
