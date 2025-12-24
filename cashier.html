@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>香陵祭 独立型POSレジ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #000080; --accent: #ef4444; --bg: #f0f2f5; --text: #1e293b; }
+        body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .cashier-container { width: 100%; max-width: 500px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 25px; }
+        header { text-align: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        h1 { color: var(--primary); font-size: 1.5rem; margin: 0; }
+        .shop-badge { display: inline-block; background: var(--primary); color: white; padding: 4px 12px; border-radius: 50px; font-size: 0.8rem; margin-top: 8px; }
+        #product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .product-card { border: 1px solid #e2e8f0; border-radius: 15px; overflow: hidden; cursor: pointer; background: white; transition: 0.1s; }
+        .product-card:active { transform: scale(0.96); }
+        .product-card.sold-out { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
+        .product-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #f8fafc; }
+        .product-info { padding: 10px; text-align: center; }
+        .p-name { font-weight: bold; font-size: 0.95rem; }
+        .p-price { color: var(--accent); font-weight: 900; font-size: 1.1rem; }
+        .p-stock { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+        .btn-action { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-refresh { background: #e2e8f0; color: var(--text); }
+        .loading { text-align: center; padding: 40px; font-weight: bold; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<div class="cashier-container">
+    <header>
+        <h1>香陵祭 POSレジ</h1>
+        <div id="shop-id-display" class="shop-badge">準備中...</div>
+    </header>
+
+    <div id="loader" class="loading">データを通信中...</div>
+    <div id="product-grid" style="display:none;"></div>
+
+    <button class="btn-action btn-refresh" onclick="fetchData()">最新の情報に更新</button>
+</div>
+
+<script>
+    // ----------------------------------------------------------------
+    // 設定: GASで「ウェブアプリとしてデプロイ」した際のURLをここに貼る
+    // ----------------------------------------------------------------
+    const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbw5phSTwNgvLf5jWJwBK-dETAjvV_hJRwjOVY8ycyr2lsmeXSgQY_fwsgrv3V58EbhUBw/exec'; 
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const SHEET_ID = urlParams.get('id') || '1oif7zFMK_sDvQFT5Ql_TIisT1ntkx4hPS2_NqPdGc_M';
+
+    async function fetchData() {
+        toggleLoading(true);
+        try {
+            // GETリクエストで在庫情報を取得
+            const response = await fetch(`${GAS_API_URL}?action=getInventory&id=${SHEET_ID}`);
+            const items = await response.json();
+            renderProducts(items);
+        } catch (e) {
+            alert("データ取得に失敗しました。GASの公開設定を確認してください。");
+        } finally {
+            toggleLoading(false);
+        }
+    }
+
+    function renderProducts(items) {
+        const grid = document.getElementById('product-grid');
+        grid.innerHTML = '';
+        items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = `product-card ${item.stock <= 0 ? 'sold-out' : ''}`;
+            card.onclick = () => processSale(item);
+            card.innerHTML = `
+                <img src="${item.image || ''}" class="product-img">
+                <div class="product-info">
+                    <div class="p-name">${item.name}</div>
+                    <div class="p-price">¥${item.price.toLocaleString()}</div>
+                    <div class="p-stock">在庫: ${item.stock}</div>
+                </div>`;
+            grid.appendChild(card);
+        });
+        document.getElementById('shop-id-display').innerText = `ID: ${SHEET_ID.substring(0,8)}...`;
+    }
+
+    async function processSale(item) {
+        if (!confirm(`【会計確認】\n${item.name}\n在庫を1減らしますか？`)) return;
+
+        toggleLoading(true);
+        try {
+            // GETリクエストで在庫を減らす指示を出す (CORS回避のためGETを使用)
+            const response = await fetch(`${GAS_API_URL}?action=recordSale&id=${SHEET_ID}&row=${item.rowIndex}&name=${encodeURIComponent(item.name)}`);
+            const result = await response.json();
+            alert(result.message);
+            fetchData(); // 完了後に再読み込み
+        } catch (e) {
+            alert("会計処理に失敗しました。");
+            toggleLoading(false);
+        }
+    }
+
+    function toggleLoading(isLoading) {
+        document.getElementById('loader').style.display = isLoading ? 'block' : 'none';
+        document.getElementById('product-grid').style.display = isLoading ? 'none' : 'grid';
+    }
+
+    window.onload = fetchData;
+</script>
+</body>
+</html>
